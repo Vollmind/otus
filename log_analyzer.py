@@ -8,62 +8,49 @@
 #                     '$request_time';
 import argparse
 import gzip
+import json
 import logging
 import os
 import re
-import sys
+from collections import namedtuple
 from datetime import datetime
 from itertools import groupby
 from statistics import median
 from string import Template
 
-config = {
-    "REPORT_SIZE": 1000,
-    "REPORT_DIR": "./reports",
-    "LOG_DIR": "./log",
-    "MAX_ERRORS": 0.1,
-    "LOG_FILE": None
-}
 
 argparser = argparse.ArgumentParser(description='Create report for last log file')
 argparser.add_argument('--config', help='Specify config file', default='./config.cfg')
 argparser.add_argument('-vvs', help='For test')
 
+LogInfo = namedtuple('LogInfo', ['file_path', 'date', 'file_type'])
 
-def file_iter(filename, opener):
+
+def file_iter(filename, file_type=None):
+    # default open
+    opener = open
+    if file_type is not None:
+        # All special file formats here
+        if file_type == 'gz':
+            opener = gzip.open
+    # open file with calculated opener
     with opener(filename, 'rt', encoding='utf-8') as file:
         for line in file:
             yield line
 
 
-# parse config if need
-args = argparser.parse_args()
-if args.config:
-    for conf_line in file_iter(args.config, open):
-        if not re.match('[a-zA-Z_]+=.+', conf_line):
-            raise ValueError('Wrong config option')
-        conf_option, conf_value = conf_line.split('=')
-        if conf_option not in config.keys():
-            raise ValueError('Wrong config option')
-        if conf_option == 'REPORT_SIZE':
-            config[conf_option] = int(conf_value)
-        elif conf_option == 'MAX_ERRORS':
-            config[conf_option] = float(conf_value)
-        else:
-            config[conf_option] = conf_value
-
-logging.basicConfig(format='[%(asctime)s] %(levelname).1s %(message)s',
-                    datefmt='%Y.%m.%d %H:%M:%S',
-                    filename=config['LOG_FILE'],
-                    level=logging.INFO)
-
-
-# Catch unhandled exceptions
-def handle_exception(exc_type, exc_value, exc_traceback):
-    logging.error("Uncaught exception", exc_info=(exc_type, exc_value, exc_traceback))
-
-
-sys.excepthook = handle_exception
+def parse_config(filename=None):
+    config = {
+        "REPORT_SIZE": 1000,
+        "REPORT_DIR": "./reports",
+        "LOG_DIR": "./log",
+        "MAX_ERRORS": 0.1,
+        "LOG_FILE": None
+    }
+    if filename is not None:
+        with open(filename, 'r') as conf_file:
+            config.update(json.load(conf_file))
+    return config
 
 
 def get_last_log(folder):
@@ -77,9 +64,12 @@ def get_last_log(folder):
         return None, None, None
     last_log = max(log_files)
     splitted = last_log.split('.')
-    return f'{folder}/{last_log}', \
-           datetime.strptime(splitted[1][4:], '%Y%m%d'), \
-           gzip.open if len(splitted) == 3 else open
+    log_info = LogInfo(
+        f'{folder}/{last_log}',
+        datetime.strptime(splitted[1][4:], '%Y%m%d'),
+        splitted[2] if len(splitted) == 3 else None
+    )
+    return log_info
 
 
 def log_parse(line_iterator, max_errors):
@@ -102,10 +92,9 @@ def log_parse(line_iterator, max_errors):
             url = splitted[7]
             parsed_log.append((url, time))
         except Exception:
-            logging.exception(f'Error while parsing log: line {line_count}')
             current_errors += 1
     if current_errors/line_count > max_errors:
-        raise ValueError(f'Too many parsing exceptions - {current_errors/line_count}')
+        raise SyntaxError(f'Too many parsing exceptions - {current_errors/line_count}')
     return parsed_log
 
 
@@ -142,30 +131,43 @@ def report_create(template_name, result_name, report_data):
     :param report_data: data for report
     """
     with open(result_name, 'w') as result_file:
-        for line in file_iter(template_name, open):
-            t = Template(line)
+        with open(template_name, 'rt') as template_file:
+            t = Template(template_file.read())
             result_file.write(t.safe_substitute(table_json=report_data))
     logging.info(f'Report created successfully - {result_name}')
 
 
 def main():
-    filename, filedate, opener = get_last_log(config['LOG_DIR'])
-    if filename is None:
+    # Load config
+    args = argparser.parse_args()
+    config = parse_config(args.config)
+    # Setting logger
+    logging.basicConfig(format='[%(asctime)s] %(levelname).1s %(message)s',
+                        datefmt='%Y.%m.%d %H:%M:%S',
+                        filename=config['LOG_FILE'],
+                        level=logging.INFO)
+
+    logging.info('Start')
+    # Getting last log
+    log_file = get_last_log(config['LOG_DIR'])
+    if log_file.file_path is None:
         # No log files in directory
         logging.info(f'No log found in {config["LOG_DIR"]}')
         return
-    report_name = f'{config["REPORT_DIR"]}/report-{filedate.strftime("%Y.%m.%d")}.html'
+    report_name = f'{config["REPORT_DIR"]}/report-{log_file.date.strftime("%Y.%m.%d")}.html'
     if os.path.exists(report_name):
         # report already exists!
         logging.info(f'Report {report_name} already exists!')
         return
 
-    parsed_log = log_parse(file_iter(filename, opener), config['MAX_ERRORS'])
+    parsed_log = log_parse(file_iter(log_file.file_path, log_file.file_type), config['MAX_ERRORS'])
     report_data = report_compute(parsed_log, config['REPORT_SIZE'])
     report_create('./report.html', report_name, report_data)
+    logging.info('End')
 
 
 if __name__ == "__main__":
-    logging.info('Start')
-    main()
-    logging.info('End')
+    try:
+        main()
+    except Exception as e:
+        logging.exception(e)
