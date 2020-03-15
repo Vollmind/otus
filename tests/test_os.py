@@ -1,4 +1,3 @@
-import gzip
 from unittest import mock
 
 from log_analyzer import get_last_log
@@ -12,7 +11,7 @@ def test_get_last_log_correct(_):
     filename, filedate, opener = get_last_log('.')
     assert filename == './nginx-access-ui.log-20170830', filename
     assert filedate.strftime('%d.%m.%Y') == '30.08.2017', filedate
-    assert opener == open, opener
+    assert opener is None, opener
 
 
 @mock.patch('log_analyzer.os.listdir', return_value=['nginx-access-ui.log-20170630.gz',
@@ -21,7 +20,7 @@ def test_get_last_log_correct_gzip(_):
     filename, filedate, opener = get_last_log('.')
     assert filename == './nginx-access-ui.log-20170830.gz', filename
     assert filedate.strftime('%d.%m.%Y') == '30.08.2017', filedate
-    assert opener == gzip.open, opener
+    assert opener == 'gz', opener
 
 
 @mock.patch('log_analyzer.os.listdir', return_value=[])

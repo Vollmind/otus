@@ -17,7 +17,7 @@ def test_log_parse_error():
     result = None
     try:
         result = log_parse(data, 0.1)
-    except ValueError as e:
+    except SyntaxError as e:
         assert str(e) == 'Too many parsing exceptions - 1.0'
     assert result is None
 
@@ -38,7 +38,7 @@ def test_log_parse_error_percent():
     result = None
     try:
         result = log_parse(data_bad, 0.5)
-    except ValueError as e:
+    except SyntaxError as e:
         assert str(e) == 'Too many parsing exceptions - 0.6'
 
     result = log_parse(data_good, 0.5)
