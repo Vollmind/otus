@@ -58,7 +58,11 @@ def get_last_log(folder):
     :param folder: folder with logs
     :return: tuple - file name, date of log, function to open it (depends on file format)
     """
-    log_files = [(x, datetime.strptime(x.split('.')[1][4:], '%Y%m%d')) for x in os.listdir(folder) if re.fullmatch("nginx-access-ui\.log-[0-9]{8}(\.gz)?", x)]
+    log_files = [
+        (x, datetime.strptime(x.split('.')[1][4:], '%Y%m%d'))
+        for x in os.listdir(folder)
+        if re.fullmatch("nginx-access-ui\.log-[0-9]{8}(\.gz)?", x)
+    ]
     if len(log_files) == 0:
         return None
     last_log = max(log_files, key=lambda x: x[1])
@@ -154,6 +158,9 @@ def main():
     if os.path.exists(report_name):
         logging.info(f'Report {report_name} already exists!')
         return
+
+    if not os.path.exists(config["REPORT_DIR"]):
+        os.mkdir(config['REPORT_DIR'])
 
     parsed_log = log_parse(file_iter(log_file.file_path), config['MAX_ERRORS'])
     report_data = report_compute(parsed_log, config['REPORT_SIZE'])
