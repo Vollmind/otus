@@ -23,16 +23,15 @@ argparser = argparse.ArgumentParser(description='Create report for last log file
 argparser.add_argument('--config', help='Specify config file', default='./config.cfg')
 argparser.add_argument('-vvs', help='For test')
 
-LogInfo = namedtuple('LogInfo', ['file_path', 'date', 'file_type'])
+LogInfo = namedtuple('LogInfo', ['file_path', 'date'])
 
 
-def file_iter(filename, file_type=None):
+def file_iter(filename: str):
     # default open
     opener = open
-    if file_type is not None:
-        # All special file formats here
-        if file_type == 'gz':
-            opener = gzip.open
+    # All special file formats here
+    if filename.endswith('.gz'):
+        opener = gzip.open
     # open file with calculated opener
     with opener(filename, 'rt', encoding='utf-8') as file:
         for line in file:
@@ -59,15 +58,13 @@ def get_last_log(folder):
     :param folder: folder with logs
     :return: tuple - file name, date of log, function to open it (depends on file format)
     """
-    log_files = [x for x in os.listdir(folder) if re.fullmatch("nginx-access-ui\.log-[0-9]{8}(\.gz)?", x)]
+    log_files = [(x, datetime.strptime(x.split('.')[1][4:], '%Y%m%d')) for x in os.listdir(folder) if re.fullmatch("nginx-access-ui\.log-[0-9]{8}(\.gz)?", x)]
     if len(log_files) == 0:
-        return None, None, None
-    last_log = max(log_files)
-    splitted = last_log.split('.')
+        return None
+    last_log = max(log_files, key=lambda x: x[1])
     log_info = LogInfo(
-        f'{folder}/{last_log}',
-        datetime.strptime(splitted[1][4:], '%Y%m%d'),
-        splitted[2] if len(splitted) == 3 else None
+        f'{folder}/{last_log[0]}',
+        last_log[1]
     )
     return log_info
 
@@ -148,19 +145,17 @@ def main():
                         level=logging.INFO)
 
     logging.info('Start')
-    # Getting last log
+
     log_file = get_last_log(config['LOG_DIR'])
-    if log_file.file_path is None:
-        # No log files in directory
+    if log_file is None:
         logging.info(f'No log found in {config["LOG_DIR"]}')
         return
     report_name = f'{config["REPORT_DIR"]}/report-{log_file.date.strftime("%Y.%m.%d")}.html'
     if os.path.exists(report_name):
-        # report already exists!
         logging.info(f'Report {report_name} already exists!')
         return
 
-    parsed_log = log_parse(file_iter(log_file.file_path, log_file.file_type), config['MAX_ERRORS'])
+    parsed_log = log_parse(file_iter(log_file.file_path), config['MAX_ERRORS'])
     report_data = report_compute(parsed_log, config['REPORT_SIZE'])
     report_create('./report.html', report_name, report_data)
     logging.info('End')
