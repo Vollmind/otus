@@ -46,9 +46,8 @@ def parse_config(filename=None):
         "MAX_ERRORS": 0.1,
         "LOG_FILE": None
     }
-    if filename is not None:
-        with open(filename, 'r') as conf_file:
-            config.update(json.load(conf_file))
+    with open(filename, 'r') as conf_file:
+        config.update(json.load(conf_file))
     return config
 
 
@@ -58,14 +57,12 @@ def get_last_log(folder):
     :param folder: folder with logs
     :return: tuple - file name, date of log, function to open it (depends on file format)
     """
-    log_files = [
-        (x, datetime.strptime(x.split('.')[1][4:], '%Y%m%d'))
-        for x in os.listdir(folder)
-        if re.fullmatch("nginx-access-ui\.log-[0-9]{8}(\.gz)?", x)
-    ]
-    if len(log_files) == 0:
+    log_files = [x for x in os.listdir(folder) if re.fullmatch("nginx-access-ui\.log-[0-9]{8}(\.gz)?", x)]
+    if not log_files:
         return None
-    last_log = max(log_files, key=lambda x: x[1])
+
+    files_with_data = [(x, datetime.strptime(x.split('.')[1][4:], '%Y%m%d')) for x in log_files]
+    last_log = max(files_with_data, key=lambda x: x[1])
     log_info = LogInfo(
         f'{folder}/{last_log[0]}',
         last_log[1]
@@ -95,7 +92,7 @@ def log_parse(line_iterator, max_errors):
         except Exception:
             current_errors += 1
     if current_errors/line_count > max_errors:
-        raise SyntaxError(f'Too many parsing exceptions - {current_errors/line_count}')
+        raise RuntimeError(f'Too many parsing exceptions - {current_errors/line_count}')
     return parsed_log
 
 
